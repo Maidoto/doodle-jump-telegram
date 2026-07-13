@@ -88,6 +88,7 @@
     lastPlatform: null,
     lastEnemyY: 0,
     platformsSinceEnemy: 0,
+    nextEnemyScore: 240,
     session: createSessionStats(),
     statsSubmitPending: false,
     player: createPlayer(),
@@ -506,6 +507,7 @@
     state.bullets = [];
     state.particles = [];
     state.platformsSinceEnemy = 0;
+    state.nextEnemyScore = 240;
 
     const player = state.player;
     player.w = clamp(view.worldW * 0.138, 50, 68);
@@ -799,23 +801,24 @@
     const mobile = usesTouchLayout();
     const mobileDifficulty = mobile ? clamp((heightScore - 240) / 1600, 0, 1) : 0;
     const gapBase = mobile
-      ? clamp(68 + heightScore * 0.008, 68, 106)
+      ? clamp(68 + heightScore * 0.005, 68, 94)
       : clamp(78 + heightScore * 0.012, 78, 132);
-    const gap = random(gapBase, gapBase + (mobile ? 14 + mobileDifficulty * 8 : 32));
-    const minWidth = mobile ? 122 - mobileDifficulty * 22 : clamp(112 - heightScore * 0.01, 82, 112);
-    const maxWidth = mobile ? 150 - mobileDifficulty * 24 : 122;
+    const gap = random(gapBase, gapBase + (mobile ? 10 + mobileDifficulty * 4 : 32));
+    const minWidth = mobile ? 122 - mobileDifficulty * 12 : clamp(112 - heightScore * 0.01, 82, 112);
+    const maxWidth = mobile ? 150 - mobileDifficulty * 14 : 122;
     const width = random(minWidth, maxWidth);
     const y = state.topGeneratedY - gap;
     const previous = state.lastPlatform || state.platforms[state.platforms.length - 1];
     const previousCenter = previous ? previous.x + previous.w * 0.5 : view.worldW * 0.5;
-    const maxStep = mobile ? view.worldW * (0.23 + mobileDifficulty * 0.08) : view.worldW * 0.46;
+    const maxStep = mobile ? view.worldW * (0.2 + mobileDifficulty * 0.04) : view.worldW * 0.46;
     const earlyGame = heightScore < 360;
-    const targetCenter = mobile && earlyGame
-      ? random(previousCenter - maxStep * 0.72, previousCenter + maxStep * 0.72)
-      : Math.random() < (mobile ? 0.08 + mobileDifficulty * 0.04 : 0.14)
-      ? random(42, view.worldW - 42)
-      : random(previousCenter - maxStep, previousCenter + maxStep);
-    const x = clamp(targetCenter - width * 0.5, 14, view.worldW - width - 14);
+    const targetCenter = mobile
+      ? random(previousCenter - maxStep * (earlyGame ? 0.72 : 1), previousCenter + maxStep * (earlyGame ? 0.72 : 1))
+      : Math.random() < 0.14
+        ? random(42, view.worldW - 42)
+        : random(previousCenter - maxStep, previousCenter + maxStep);
+    const safeCenter = clamp(targetCenter, 14 + width * 0.5, view.worldW - 14 - width * 0.5);
+    const x = safeCenter - width * 0.5;
     const type = choosePlatformType(heightScore);
     const platform = {
       x,
@@ -837,9 +840,9 @@
   function choosePlatformType(heightScore) {
     const roll = Math.random();
     if (usesTouchLayout()) {
-      if (heightScore > 430 && roll < 0.065) return "boost";
-      if (heightScore > 620 && roll < 0.15) return "fragile";
-      if (heightScore > 360 && roll < 0.28) return "moving";
+      if (heightScore > 460 && roll < 0.06) return "boost";
+      if (heightScore > 900 && roll < 0.1) return "fragile";
+      if (heightScore > 460 && roll < 0.22) return "moving";
       return "solid";
     }
 
@@ -851,18 +854,21 @@
 
   function maybeSpawnEnemy(platform, heightScore) {
     const mobile = usesTouchLayout();
-    if (heightScore < (mobile ? 90 : 80) || platform.type === "fragile") return;
+    if (heightScore < (mobile ? 160 : 80) || platform.type === "fragile") return;
 
     state.platformsSinceEnemy += 1;
 
-    const chance = mobile
-      ? clamp(0.22 + heightScore / 2800, 0.22, 0.42)
-      : clamp(0.055 + heightScore / 3600, 0.055, 0.24);
-    const guaranteed = mobile && state.platformsSinceEnemy >= (heightScore < 700 ? 4 : 3);
-    const minEnemyGap = mobile ? 150 : 0;
+    if (mobile) {
+      const due = heightScore >= state.nextEnemyScore;
+      const randomSpawn = state.platformsSinceEnemy >= 2 && Math.random() < clamp(0.1 + heightScore / 6000, 0.1, 0.22);
+      const minEnemyGap = 175;
 
-    if (mobile && Math.abs(platform.y - state.lastEnemyY) < minEnemyGap) return;
-    if (!guaranteed && Math.random() > chance) return;
+      if (Math.abs(platform.y - state.lastEnemyY) < minEnemyGap) return;
+      if (!due && !randomSpawn) return;
+    } else {
+      const chance = clamp(0.055 + heightScore / 3600, 0.055, 0.24);
+      if (Math.random() > chance) return;
+    }
 
     const size = mobile ? clamp(view.worldW * 0.16, 54, 68) : clamp(view.worldW * 0.12, 42, 58);
     const minX = clamp(platform.x - 22, 8, view.worldW - size - 8);
@@ -882,6 +888,9 @@
 
     state.lastEnemyY = platform.y;
     state.platformsSinceEnemy = 0;
+    if (mobile) {
+      state.nextEnemyScore = heightScore + random(260, 430);
+    }
   }
 
   function pruneWorld() {
