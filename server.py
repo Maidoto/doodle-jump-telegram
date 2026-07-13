@@ -525,13 +525,16 @@ def play_reply_markup(webapp_url):
     }
 
 
-def send_telegram_message(chat_id, text, reply_markup=None):
+def send_telegram_message(chat_id, text, reply_markup=None, message_thread_id=None):
     payload = {
         "chat_id": chat_id,
         "text": text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True,
     }
+
+    if message_thread_id is not None:
+        payload["message_thread_id"] = message_thread_id
 
     if reply_markup:
         payload["reply_markup"] = reply_markup
@@ -560,12 +563,14 @@ def handle_telegram_update(update, headers):
     user = message.get("from") or {}
     player = telegram_user_to_player(user)
     webapp_url = get_request_base_url(headers)
+    message_thread_id = message.get("message_thread_id")
 
     if command in ("/start", "/help"):
         send_telegram_message(
             chat_id,
             "Команды игры:\n/play — открыть игру\n/stats — моя статистика\n/top — топ игроков",
             play_reply_markup(webapp_url),
+            message_thread_id,
         )
         return {"ok": True}
 
@@ -574,17 +579,18 @@ def handle_telegram_update(update, headers):
             chat_id,
             "Нажми кнопку, чтобы открыть игру:",
             play_reply_markup(webapp_url),
+            message_thread_id,
         )
         return {"ok": True}
 
     if command == "/stats":
         stats = stats_payload_for_player(player)
-        send_telegram_message(chat_id, player_stats_text(stats), play_reply_markup(webapp_url))
+        send_telegram_message(chat_id, player_stats_text(stats), play_reply_markup(webapp_url), message_thread_id)
         return {"ok": True}
 
     if command == "/top":
         stats = stats_payload_for_player(player)
-        send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url))
+        send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url), message_thread_id)
         return {"ok": True}
 
     return {"ok": True, "ignored": True}
