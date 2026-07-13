@@ -85,6 +85,7 @@
     score: 0,
     best: readBestScore(),
     topGeneratedY: 0,
+    lastPlatform: null,
     session: createSessionStats(),
     statsSubmitPending: false,
     player: createPlayer(),
@@ -140,19 +141,43 @@
   }
 
   function loadSound(src) {
-    const audio = new Audio(src);
-    audio.preload = "auto";
-    return audio;
+    const elements = Array.from({ length: 4 }, () => {
+      const audio = new Audio(src);
+      audio.preload = "auto";
+      return audio;
+    });
+
+    return {
+      elements,
+      index: 0,
+    };
   }
 
   function unlockAudio() {
     audioState.enabled = true;
 
-    for (const sound of Object.values(sounds)) {
-      try {
-        sound.load();
-      } catch {
-        // Some browsers ignore explicit load calls for local files.
+    for (const [name, sound] of Object.entries(sounds)) {
+      if (name === "music") continue;
+
+      for (const audio of sound.elements) {
+        try {
+          audio.load();
+          audio.volume = 0;
+          const warmup = audio.play();
+          if (warmup) {
+            warmup
+              .then(() => {
+                audio.pause();
+                audio.currentTime = 0;
+                audio.volume = 1;
+              })
+              .catch(() => {
+                audio.volume = 1;
+              });
+          }
+        } catch {
+          audio.volume = 1;
+        }
       }
     }
   }
@@ -160,14 +185,14 @@
   function startMusic() {
     if (!audioState.enabled) return;
 
-    const music = sounds.music;
+    const music = sounds.music.elements[0];
     music.loop = true;
     music.volume = 0.22;
     music.play().catch(() => {});
   }
 
   function stopMusic() {
-    const music = sounds.music;
+    const music = sounds.music.elements[0];
     music.pause();
     music.currentTime = 0;
   }
@@ -175,10 +200,14 @@
   function playSound(name, volume = 1) {
     if (!audioState.enabled) return;
 
-    const base = sounds[name];
-    if (!base) return;
+    const sound = sounds[name];
+    if (!sound) return;
 
-    const effect = base.cloneNode(true);
+    const effect = sound.elements[sound.index];
+    sound.index = (sound.index + 1) % sound.elements.length;
+
+    effect.pause();
+    effect.currentTime = 0;
     effect.volume = clamp(volume, 0, 1);
     effect.play().catch(() => {});
   }
@@ -467,8 +496,6 @@
   function resetGame() {
     state.mode = state.mode === "ready" ? "ready" : "active";
     state.cameraY = 0;
-    state.startY = view.cssH - 210;
-    state.highestY = state.startY;
     state.score = 0;
     state.session = createSessionStats();
     state.statsSubmitPending = false;
@@ -480,6 +507,9 @@
     const player = state.player;
     player.w = clamp(view.worldW * 0.138, 50, 68);
     player.h = player.w * 1.34;
+    const baseY = view.cssH - (usesTouchLayout() ? 154 : 86);
+    state.startY = baseY - player.h * 0.88;
+    state.highestY = state.startY;
     player.x = view.worldW * 0.5 - player.w * 0.5;
     player.y = state.startY;
     player.vx = 0;
@@ -491,7 +521,7 @@
 
     const basePlatform = {
       x: view.worldW * 0.5 - 58,
-      y: view.cssH - 82,
+      y: baseY,
       w: 116,
       h: 18,
       type: "solid",
@@ -500,6 +530,7 @@
     };
 
     state.platforms.push(basePlatform);
+    state.lastPlatform = basePlatform;
     state.topGeneratedY = basePlatform.y;
 
     while (state.topGeneratedY > -view.cssH * 1.35) {
@@ -533,9 +564,10 @@
   }
 
   function resize() {
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
     const width = Math.max(320, Math.floor(window.innerWidth));
     const height = Math.max(480, Math.floor(window.innerHeight));
+    const mobile = width <= 680 || usesTouchLayout();
+    const dpr = Math.min(window.devicePixelRatio || 1, mobile ? 1.25 : 2);
 
     view.cssW = width;
     view.cssH = height;
@@ -759,11 +791,19 @@
 
   function generateNextPlatform() {
     const heightScore = Math.max(0, Math.floor((state.startY - state.topGeneratedY) * 0.12));
-    const gapBase = clamp(78 + heightScore * 0.012, 78, 132);
-    const gap = random(gapBase, gapBase + 32);
-    const width = random(clamp(112 - heightScore * 0.01, 82, 112), 122);
+    const mobile = usesTouchLayout();
+    const gapBase = clamp(76 + heightScore * 0.01, mobile ? 74 : 78, mobile ? 112 : 132);
+    const gap = random(gapBase, gapBase + (mobile ? 18 : 32));
+    const minWidth = mobile ? 108 : clamp(112 - heightScore * 0.01, 82, 112);
+    const width = random(minWidth, mobile ? 142 : 122);
     const y = state.topGeneratedY - gap;
-    const x = random(14, view.worldW - width - 14);
+    const previous = state.lastPlatform || state.platforms[state.platforms.length - 1];
+    const previousCenter = previous ? previous.x + previous.w * 0.5 : view.worldW * 0.5;
+    const maxStep = mobile ? view.worldW * 0.34 : view.worldW * 0.46;
+    const targetCenter = Math.random() < 0.14
+      ? random(42, view.worldW - 42)
+      : random(previousCenter - maxStep, previousCenter + maxStep);
+    const x = clamp(targetCenter - width * 0.5, 14, view.worldW - width - 14);
     const type = choosePlatformType(heightScore);
     const platform = {
       x,
@@ -776,6 +816,7 @@
     };
 
     state.platforms.push(platform);
+    state.lastPlatform = platform;
     state.topGeneratedY = y;
 
     maybeSpawnEnemy(platform, heightScore);
@@ -783,16 +824,18 @@
 
   function choosePlatformType(heightScore) {
     const roll = Math.random();
-    if (heightScore > 260 && roll < 0.09) return "fragile";
-    if (heightScore > 150 && roll < 0.24) return "moving";
-    if (heightScore > 420 && roll < 0.18) return "boost";
+    if (heightScore > 420 && roll < 0.08) return "boost";
+    if (heightScore > 260 && roll < 0.15) return "fragile";
+    if (heightScore > 150 && roll < 0.27) return "moving";
     return "solid";
   }
 
   function maybeSpawnEnemy(platform, heightScore) {
     if (heightScore < 80 || platform.type === "fragile") return;
 
-    const chance = clamp(0.055 + heightScore / 3600, 0.055, 0.24);
+    const chance = usesTouchLayout()
+      ? clamp(0.035 + heightScore / 5200, 0.035, 0.14)
+      : clamp(0.055 + heightScore / 3600, 0.055, 0.24);
     if (Math.random() > chance) return;
 
     const size = clamp(view.worldW * 0.12, 42, 58);
@@ -862,11 +905,8 @@
   }
 
   function drawBackground() {
-    const usingVideo = mapVideoReady && mapVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
-    const media = usingVideo ? mapVideo : images.background;
-
-    if (isDrawable(media)) {
-      drawTiledMedia(media, view.cssW, view.cssH, 0.16);
+    if (isDrawable(images.background)) {
+      drawTiledMedia(images.background, view.cssW, view.cssH, 0.1);
     } else {
       const grd = ctx.createLinearGradient(0, 0, 0, view.cssH);
       grd.addColorStop(0, "#243c31");
@@ -876,7 +916,15 @@
       ctx.fillRect(0, 0, view.cssW, view.cssH);
     }
 
-    ctx.fillStyle = "rgba(7, 8, 7, 0.24)";
+    const usingVideo = !usesTouchLayout() && mapVideoReady && mapVideo.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
+
+    if (usingVideo) {
+      ctx.globalAlpha = 0.72;
+      drawTiledMedia(mapVideo, view.cssW, view.cssH, 0.16);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.fillStyle = "rgba(7, 8, 7, 0.18)";
     ctx.fillRect(0, 0, view.cssW, view.cssH);
   }
 
@@ -1039,7 +1087,7 @@
 
   function spawnParticles(x, y, type) {
     const color = type === "enemy" ? "#ef4d45" : type === "boost" ? "#ffcf43" : "#ffffff";
-    const count = type === "enemy" ? 16 : 8;
+    const count = usesTouchLayout() ? (type === "enemy" ? 8 : 4) : (type === "enemy" ? 16 : 8);
 
     for (let i = 0; i < count; i += 1) {
       const life = random(0.22, 0.55);
@@ -1176,6 +1224,10 @@
     if (!media) return false;
     if (media instanceof HTMLVideoElement) return media.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA;
     return media.complete && media.naturalWidth > 0;
+  }
+
+  function usesTouchLayout() {
+    return view.cssW <= 820 || window.matchMedia?.("(pointer: coarse)")?.matches;
   }
 
   function worldX(x) {
