@@ -87,6 +87,7 @@
     topGeneratedY: 0,
     lastPlatform: null,
     lastEnemyY: 0,
+    platformsSinceEnemy: 0,
     session: createSessionStats(),
     statsSubmitPending: false,
     player: createPlayer(),
@@ -504,6 +505,7 @@
     state.enemies = [];
     state.bullets = [];
     state.particles = [];
+    state.platformsSinceEnemy = 0;
 
     const player = state.player;
     player.w = clamp(view.worldW * 0.138, 50, 68);
@@ -849,15 +851,20 @@
 
   function maybeSpawnEnemy(platform, heightScore) {
     const mobile = usesTouchLayout();
-    if (heightScore < (mobile ? 220 : 80) || platform.type === "fragile") return;
+    if (heightScore < (mobile ? 90 : 80) || platform.type === "fragile") return;
+
+    state.platformsSinceEnemy += 1;
 
     const chance = mobile
-      ? clamp(0.095 + heightScore / 3600, 0.095, 0.24)
+      ? clamp(0.22 + heightScore / 2800, 0.22, 0.42)
       : clamp(0.055 + heightScore / 3600, 0.055, 0.24);
-    if (Math.random() > chance) return;
-    if (mobile && Math.abs(platform.y - state.lastEnemyY) < 260) return;
+    const guaranteed = mobile && state.platformsSinceEnemy >= (heightScore < 700 ? 4 : 3);
+    const minEnemyGap = mobile ? 150 : 0;
 
-    const size = clamp(view.worldW * 0.12, 42, 58);
+    if (mobile && Math.abs(platform.y - state.lastEnemyY) < minEnemyGap) return;
+    if (!guaranteed && Math.random() > chance) return;
+
+    const size = mobile ? clamp(view.worldW * 0.16, 54, 68) : clamp(view.worldW * 0.12, 42, 58);
     const minX = clamp(platform.x - 22, 8, view.worldW - size - 8);
     const maxX = clamp(platform.x + platform.w - size + 22, 8, view.worldW - size - 8);
 
@@ -874,6 +881,7 @@
     });
 
     state.lastEnemyY = platform.y;
+    state.platformsSinceEnemy = 0;
   }
 
   function pruneWorld() {
@@ -1025,6 +1033,13 @@
       const x = worldX(enemy.x);
       const y = worldY(enemy.y);
       if (y < -80 || y > view.cssH + 80) continue;
+
+      ctx.save();
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = "#ef4d45";
+      roundRect(ctx, x - 4, y - 4, enemy.w + 8, enemy.h + 8, 10);
+      ctx.fill();
+      ctx.restore();
 
       drawImageOrFallback(images.enemy, x, y, enemy.w, enemy.h, "enemy", enemy.vx < 0 ? -1 : 1);
     }
