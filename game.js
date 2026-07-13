@@ -86,6 +86,7 @@
     best: readBestScore(),
     topGeneratedY: 0,
     lastPlatform: null,
+    lastEnemyY: 0,
     session: createSessionStats(),
     statsSubmitPending: false,
     player: createPlayer(),
@@ -508,6 +509,7 @@
     player.w = clamp(view.worldW * 0.138, 50, 68);
     player.h = player.w * 1.34;
     const baseY = view.cssH - (usesTouchLayout() ? 154 : 86);
+    state.lastEnemyY = baseY;
     state.startY = baseY - player.h * 0.88;
     state.highestY = state.startY;
     player.x = view.worldW * 0.5 - player.w * 0.5;
@@ -793,20 +795,22 @@
   function generateNextPlatform() {
     const heightScore = Math.max(0, Math.floor((state.startY - state.topGeneratedY) * 0.12));
     const mobile = usesTouchLayout();
+    const mobileDifficulty = mobile ? clamp((heightScore - 240) / 1600, 0, 1) : 0;
     const gapBase = mobile
-      ? clamp(66 + heightScore * 0.006, 66, 94)
+      ? clamp(68 + heightScore * 0.008, 68, 106)
       : clamp(78 + heightScore * 0.012, 78, 132);
-    const gap = random(gapBase, gapBase + (mobile ? 14 : 32));
-    const minWidth = mobile ? 124 : clamp(112 - heightScore * 0.01, 82, 112);
-    const width = random(minWidth, mobile ? 156 : 122);
+    const gap = random(gapBase, gapBase + (mobile ? 14 + mobileDifficulty * 8 : 32));
+    const minWidth = mobile ? 122 - mobileDifficulty * 22 : clamp(112 - heightScore * 0.01, 82, 112);
+    const maxWidth = mobile ? 150 - mobileDifficulty * 24 : 122;
+    const width = random(minWidth, maxWidth);
     const y = state.topGeneratedY - gap;
     const previous = state.lastPlatform || state.platforms[state.platforms.length - 1];
     const previousCenter = previous ? previous.x + previous.w * 0.5 : view.worldW * 0.5;
-    const maxStep = mobile ? view.worldW * 0.24 : view.worldW * 0.46;
-    const earlyGame = heightScore < 900;
+    const maxStep = mobile ? view.worldW * (0.23 + mobileDifficulty * 0.08) : view.worldW * 0.46;
+    const earlyGame = heightScore < 360;
     const targetCenter = mobile && earlyGame
-      ? random(previousCenter - maxStep * 0.68, previousCenter + maxStep * 0.68)
-      : Math.random() < (mobile ? 0.05 : 0.14)
+      ? random(previousCenter - maxStep * 0.72, previousCenter + maxStep * 0.72)
+      : Math.random() < (mobile ? 0.08 + mobileDifficulty * 0.04 : 0.14)
       ? random(42, view.worldW - 42)
       : random(previousCenter - maxStep, previousCenter + maxStep);
     const x = clamp(targetCenter - width * 0.5, 14, view.worldW - width - 14);
@@ -817,7 +821,7 @@
       w: width,
       h: 18,
       type,
-      vx: type === "moving" ? randomSign() * random(mobile ? 24 : 42, mobile ? 52 : 88) : 0,
+      vx: type === "moving" ? randomSign() * random(mobile ? 28 : 42, mobile ? 62 : 88) : 0,
       broken: false,
     };
 
@@ -831,9 +835,9 @@
   function choosePlatformType(heightScore) {
     const roll = Math.random();
     if (usesTouchLayout()) {
-      if (heightScore > 520 && roll < 0.07) return "boost";
-      if (heightScore > 900 && roll < 0.11) return "fragile";
-      if (heightScore > 650 && roll < 0.2) return "moving";
+      if (heightScore > 430 && roll < 0.065) return "boost";
+      if (heightScore > 620 && roll < 0.15) return "fragile";
+      if (heightScore > 360 && roll < 0.28) return "moving";
       return "solid";
     }
 
@@ -844,12 +848,14 @@
   }
 
   function maybeSpawnEnemy(platform, heightScore) {
-    if (heightScore < 80 || platform.type === "fragile") return;
+    const mobile = usesTouchLayout();
+    if (heightScore < (mobile ? 220 : 80) || platform.type === "fragile") return;
 
-    const chance = usesTouchLayout()
-      ? clamp(0.035 + heightScore / 5200, 0.035, 0.14)
+    const chance = mobile
+      ? clamp(0.095 + heightScore / 3600, 0.095, 0.24)
       : clamp(0.055 + heightScore / 3600, 0.055, 0.24);
     if (Math.random() > chance) return;
+    if (mobile && Math.abs(platform.y - state.lastEnemyY) < 260) return;
 
     const size = clamp(view.worldW * 0.12, 42, 58);
     const minX = clamp(platform.x - 22, 8, view.worldW - size - 8);
@@ -866,6 +872,8 @@
       phase: random(0, Math.PI * 2),
       dead: false,
     });
+
+    state.lastEnemyY = platform.y;
   }
 
   function pruneWorld() {
