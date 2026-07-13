@@ -614,6 +614,7 @@
   function update(dt) {
     const player = state.player;
     const prevY = player.y;
+    const mobile = usesTouchLayout();
 
     player.shootCooldown = Math.max(0, player.shootCooldown - dt);
     player.shootPose = Math.max(0, player.shootPose - dt);
@@ -623,8 +624,8 @@
     }
 
     const axis = Number(isMovingRight()) - Number(isMovingLeft());
-    const maxSpeed = 330;
-    const accel = axis ? 15 : 10;
+    const maxSpeed = mobile ? 385 : 330;
+    const accel = axis ? (mobile ? 22 : 15) : (mobile ? 14 : 10);
     const targetVx = axis * maxSpeed;
 
     player.vx += (targetVx - player.vx) * Math.min(1, accel * dt);
@@ -636,8 +637,8 @@
       player.face = axis;
     }
 
-    player.vy += 1960 * dt;
-    player.vy = Math.min(player.vy, 1120);
+    player.vy += (mobile ? 1880 : 1960) * dt;
+    player.vy = Math.min(player.vy, mobile ? 1060 : 1120);
     player.x += player.vx * dt;
     player.y += player.vy * dt;
 
@@ -695,7 +696,7 @@
       if (hitbox.x + hitbox.w < platform.x || hitbox.x > platform.x + platform.w) continue;
 
       player.y = platform.y - player.h * 0.88;
-      player.vy = platform.type === "boost" ? -1170 : -900;
+      player.vy = platform.type === "boost" ? (usesTouchLayout() ? -1220 : -1170) : (usesTouchLayout() ? -960 : -900);
       state.session.jumps += 1;
       playSound("jump", platform.type === "boost" ? 0.72 : 0.48);
       spawnParticles(platform.x + platform.w * 0.5, platform.y, platform.type);
@@ -792,15 +793,20 @@
   function generateNextPlatform() {
     const heightScore = Math.max(0, Math.floor((state.startY - state.topGeneratedY) * 0.12));
     const mobile = usesTouchLayout();
-    const gapBase = clamp(76 + heightScore * 0.01, mobile ? 74 : 78, mobile ? 112 : 132);
-    const gap = random(gapBase, gapBase + (mobile ? 18 : 32));
-    const minWidth = mobile ? 108 : clamp(112 - heightScore * 0.01, 82, 112);
-    const width = random(minWidth, mobile ? 142 : 122);
+    const gapBase = mobile
+      ? clamp(66 + heightScore * 0.006, 66, 94)
+      : clamp(78 + heightScore * 0.012, 78, 132);
+    const gap = random(gapBase, gapBase + (mobile ? 14 : 32));
+    const minWidth = mobile ? 124 : clamp(112 - heightScore * 0.01, 82, 112);
+    const width = random(minWidth, mobile ? 156 : 122);
     const y = state.topGeneratedY - gap;
     const previous = state.lastPlatform || state.platforms[state.platforms.length - 1];
     const previousCenter = previous ? previous.x + previous.w * 0.5 : view.worldW * 0.5;
-    const maxStep = mobile ? view.worldW * 0.34 : view.worldW * 0.46;
-    const targetCenter = Math.random() < 0.14
+    const maxStep = mobile ? view.worldW * 0.24 : view.worldW * 0.46;
+    const earlyGame = heightScore < 900;
+    const targetCenter = mobile && earlyGame
+      ? random(previousCenter - maxStep * 0.68, previousCenter + maxStep * 0.68)
+      : Math.random() < (mobile ? 0.05 : 0.14)
       ? random(42, view.worldW - 42)
       : random(previousCenter - maxStep, previousCenter + maxStep);
     const x = clamp(targetCenter - width * 0.5, 14, view.worldW - width - 14);
@@ -811,7 +817,7 @@
       w: width,
       h: 18,
       type,
-      vx: type === "moving" ? randomSign() * random(42, 88) : 0,
+      vx: type === "moving" ? randomSign() * random(mobile ? 24 : 42, mobile ? 52 : 88) : 0,
       broken: false,
     };
 
@@ -824,6 +830,13 @@
 
   function choosePlatformType(heightScore) {
     const roll = Math.random();
+    if (usesTouchLayout()) {
+      if (heightScore > 520 && roll < 0.07) return "boost";
+      if (heightScore > 900 && roll < 0.11) return "fragile";
+      if (heightScore > 650 && roll < 0.2) return "moving";
+      return "solid";
+    }
+
     if (heightScore > 420 && roll < 0.08) return "boost";
     if (heightScore > 260 && roll < 0.15) return "fragile";
     if (heightScore > 150 && roll < 0.27) return "moving";
