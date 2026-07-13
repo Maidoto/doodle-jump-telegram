@@ -1,0 +1,1 @@
+# No external Python dependencies. The server uses Python standard library only.

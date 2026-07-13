@@ -1,0 +1,92 @@
+﻿<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Doodle Jump Telegram</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  </head>
+  <body>
+    <main class="game-shell" aria-label="Doodle Jump Telegram">
+      <video id="mapVideo" class="map-video" muted playsinline loop preload="auto" aria-hidden="true">
+        <source src="./assets/map.webm" type="video/webm" />
+      </video>
+
+      <canvas id="gameCanvas" aria-label="Игровое поле"></canvas>
+
+      <div class="hud" aria-hidden="true">
+        <div class="hud-block">
+          <span class="hud-label">SCORE</span>
+          <span id="scoreValue" class="hud-value">0</span>
+        </div>
+        <div class="hud-actions">
+          <div class="hud-block profile-pill">
+            <span class="hud-label">PLAYER</span>
+            <span id="playerName" class="hud-name">Guest</span>
+          </div>
+          <button id="statsButton" class="hud-button" type="button">Stats</button>
+        </div>
+        <div class="hud-block">
+          <span class="hud-label">BEST</span>
+          <span id="bestValue" class="hud-value">0</span>
+        </div>
+      </div>
+
+      <section id="startOverlay" class="overlay">
+        <div class="modal">
+          <h1>Doodle Jump</h1>
+          <button id="startButton" class="primary-button" type="button">Старт</button>
+        </div>
+      </section>
+
+      <section id="gameOverOverlay" class="overlay hidden">
+        <div class="modal">
+          <h2>Игра окончена</h2>
+          <p id="finalScore" class="final-score">0</p>
+          <div class="modal-actions">
+            <button id="restartButton" class="primary-button" type="button">Заново</button>
+            <button id="statsAfterGameButton" class="secondary-button" type="button">Статистика</button>
+          </div>
+        </div>
+      </section>
+
+      <section id="statsOverlay" class="overlay hidden">
+        <div class="modal stats-modal">
+          <div class="modal-title-row">
+            <h2>Статистика</h2>
+            <button id="closeStatsButton" class="icon-button" type="button" aria-label="Закрыть">×</button>
+          </div>
+          <p id="statsStatus" class="stats-status">Загрузка...</p>
+          <div class="stats-grid">
+            <div class="stat-tile">
+              <span class="hud-label">BEST</span>
+              <strong id="statBest">0</strong>
+            </div>
+            <div class="stat-tile">
+              <span class="hud-label">GAMES</span>
+              <strong id="statGames">0</strong>
+            </div>
+            <div class="stat-tile">
+              <span class="hud-label">HITS</span>
+              <strong id="statHits">0</strong>
+            </div>
+            <div class="stat-tile">
+              <span class="hud-label">RANK</span>
+              <strong id="statRank">-</strong>
+            </div>
+          </div>
+          <div id="leaderboardList" class="leaderboard" aria-label="Таблица лидеров"></div>
+        </div>
+      </section>
+
+      <div class="touch-controls" aria-label="Сенсорное управление">
+        <button id="leftButton" class="control-button" type="button" aria-label="Влево">‹</button>
+        <button id="shootButton" class="control-button shoot" type="button" aria-label="Стрелять">●</button>
+        <button id="rightButton" class="control-button" type="button" aria-label="Вправо">›</button>
+      </div>
+    </main>
+
+    <script src="./game.js" defer></script>
+  </body>
+</html>

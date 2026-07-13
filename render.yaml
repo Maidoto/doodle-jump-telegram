@@ -1,0 +1,18 @@
+﻿services:
+  - type: web
+    name: doodle-jump-telegram
+    runtime: python
+    buildCommand: python -m py_compile server.py
+    startCommand: python server.py
+    healthCheckPath: /health
+    envVars:
+      - key: HOST
+        value: 0.0.0.0
+      - key: ALLOW_DEV_AUTH
+        value: "0"
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
