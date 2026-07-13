@@ -8,6 +8,7 @@
   const startOverlay = document.getElementById("startOverlay");
   const gameOverOverlay = document.getElementById("gameOverOverlay");
   const startButton = document.getElementById("startButton");
+  const startStatsButton = document.getElementById("startStatsButton");
   const restartButton = document.getElementById("restartButton");
   const scoreValue = document.getElementById("scoreValue");
   const bestValue = document.getElementById("bestValue");
@@ -118,6 +119,7 @@
   window.addEventListener("keyup", handleKeyUp);
 
   startButton.addEventListener("click", startGame);
+  startStatsButton.addEventListener("click", openStats);
   restartButton.addEventListener("click", startGame);
   statsButton.addEventListener("click", openStats);
   statsAfterGameButton.addEventListener("click", openStats);
@@ -134,6 +136,9 @@
   resize();
   resetGame();
   loadStats();
+  if (shouldOpenStatsOnLaunch()) {
+    openStats();
+  }
   requestAnimationFrame(loop);
 
   function loadImage(src) {
@@ -227,6 +232,7 @@
     return {
       app,
       initData: app?.initData || "",
+      startParam: app?.initDataUnsafe?.start_param || "",
       user: app?.initDataUnsafe?.user || getLocalUser(),
     };
   }
@@ -417,6 +423,11 @@
 
   function closeStats() {
     statsOverlay.classList.add("hidden");
+  }
+
+  function shouldOpenStatsOnLaunch() {
+    const params = new URLSearchParams(window.location.search);
+    return telegram.startParam === "stats" || params.get("view") === "stats";
   }
 
   function updateStatsUi() {

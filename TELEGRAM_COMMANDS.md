@@ -15,7 +15,7 @@ The bot supports these commands in private chats and groups:
 /help  - show commands
 ```
 
-The `/play` message also includes a `Статистика` inline button. It requires `callback_query` in webhook `allowed_updates`, so run `set_webhook.py` again after deploying this version.
+The `/play` message also includes a `Статистика` inline button. In groups it opens the Mini App with the statistics screen.
 
 Render environment variables:
 

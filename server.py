@@ -529,14 +529,22 @@ def leaderboard_text(stats):
     return "\n".join(lines)
 
 
+def webapp_view_url(webapp_url, view):
+    separator = "&" if "?" in webapp_url else "?"
+    return f"{webapp_url}{separator}view={quote(view)}"
+
+
 def play_reply_markup(webapp_url, chat_type="private"):
+    stats_webapp_url = webapp_view_url(webapp_url, "stats")
+
     if chat_type in ("group", "supergroup"):
         username = get_bot_username()
         play_url = f"https://t.me/{username}?startapp=play" if username else webapp_url
+        stats_url = f"https://t.me/{username}?startapp=stats" if username else stats_webapp_url
         return {
             "inline_keyboard": [
                 [{"text": "🎮 Играть", "url": play_url}],
-                [{"text": "📊 Статистика", "callback_data": "top"}],
+                [{"text": "📊 Статистика", "url": stats_url}],
                 [{"text": "Открыть сайт", "url": webapp_url}],
             ]
         }
@@ -544,7 +552,7 @@ def play_reply_markup(webapp_url, chat_type="private"):
     return {
         "inline_keyboard": [
             [{"text": "🎮 Играть", "web_app": {"url": webapp_url}}],
-            [{"text": "📊 Статистика", "callback_data": "top"}],
+            [{"text": "📊 Статистика", "web_app": {"url": stats_webapp_url}}],
             [{"text": "Открыть ссылкой", "url": webapp_url}],
         ]
     }
