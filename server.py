@@ -20,6 +20,7 @@ DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR))).expanduser().resolve(
 DB_PATH = DATA_DIR / "stats.sqlite3"
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
 WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "").strip().lstrip("@")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_KEY = (
     os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -473,6 +474,18 @@ def get_request_base_url(headers):
     return f"{proto}://{host}".rstrip("/")
 
 
+def get_bot_username():
+    if BOT_USERNAME:
+        return BOT_USERNAME
+
+    try:
+        result = telegram_api("getMe", {})
+        username = ((result.get("result") or {}).get("username") or "").strip()
+        return username
+    except Exception:
+        return ""
+
+
 def telegram_user_to_player(user):
     return parse_telegram_user(user or {})
 
@@ -516,7 +529,17 @@ def leaderboard_text(stats):
     return "\n".join(lines)
 
 
-def play_reply_markup(webapp_url):
+def play_reply_markup(webapp_url, chat_type="private"):
+    if chat_type in ("group", "supergroup"):
+        username = get_bot_username()
+        play_url = f"https://t.me/{username}?startapp=play" if username else webapp_url
+        return {
+            "inline_keyboard": [
+                [{"text": "🎮 Играть", "url": play_url}],
+                [{"text": "Открыть сайт", "url": webapp_url}],
+            ]
+        }
+
     return {
         "inline_keyboard": [
             [{"text": "🎮 Играть", "web_app": {"url": webapp_url}}],
@@ -555,6 +578,7 @@ def handle_telegram_update(update, headers):
     message = update.get("message") or update.get("edited_message") or {}
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
+    chat_type = chat.get("type") or "private"
 
     if not chat_id:
         return {"ok": True, "ignored": True}
@@ -569,7 +593,7 @@ def handle_telegram_update(update, headers):
         send_telegram_message(
             chat_id,
             "Команды игры:\n/play — открыть игру\n/stats — моя статистика\n/top — топ игроков",
-            play_reply_markup(webapp_url),
+            play_reply_markup(webapp_url, chat_type),
             message_thread_id,
         )
         return {"ok": True}
@@ -578,19 +602,19 @@ def handle_telegram_update(update, headers):
         send_telegram_message(
             chat_id,
             "Нажми кнопку, чтобы открыть игру:",
-            play_reply_markup(webapp_url),
+            play_reply_markup(webapp_url, chat_type),
             message_thread_id,
         )
         return {"ok": True}
 
     if command == "/stats":
         stats = stats_payload_for_player(player)
-        send_telegram_message(chat_id, player_stats_text(stats), play_reply_markup(webapp_url), message_thread_id)
+        send_telegram_message(chat_id, player_stats_text(stats), play_reply_markup(webapp_url, chat_type), message_thread_id)
         return {"ok": True}
 
     if command == "/top":
         stats = stats_payload_for_player(player)
-        send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url), message_thread_id)
+        send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url, chat_type), message_thread_id)
         return {"ok": True}
 
     return {"ok": True, "ignored": True}
