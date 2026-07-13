@@ -1,6 +1,7 @@
 ﻿#!/usr/bin/env python3
 import hashlib
 import hmac
+import html
 import json
 import mimetypes
 import os
@@ -18,6 +19,7 @@ BASE_DIR = Path(__file__).resolve().parent
 DATA_DIR = Path(os.environ.get("DATA_DIR", str(BASE_DIR))).expanduser().resolve()
 DB_PATH = DATA_DIR / "stats.sqlite3"
 BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "").strip()
+WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip().rstrip("/")
 SUPABASE_URL = os.environ.get("SUPABASE_URL", "").strip().rstrip("/")
 SUPABASE_KEY = (
     os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
@@ -442,6 +444,150 @@ def record_score_supabase(player, payload):
     })
 
     return supabase_stats_from_row(updated)
+def telegram_api(method, payload):
+    if not BOT_TOKEN:
+        raise RuntimeError("TELEGRAM_BOT_TOKEN is not configured")
+
+    request = Request(
+        f"https://api.telegram.org/bot{BOT_TOKEN}/{method}",
+        data=json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        method="POST",
+        headers={"Content-Type": "application/json"},
+    )
+
+    try:
+        with urlopen(request, timeout=12) as response:
+            raw = response.read().decode("utf-8")
+            return json.loads(raw) if raw else {"ok": True}
+    except HTTPError as exc:
+        raw = exc.read().decode("utf-8", errors="replace")
+        raise RuntimeError(f"Telegram {method} failed: {exc.code} {raw}") from exc
+
+
+def get_request_base_url(headers):
+    if WEBAPP_URL:
+        return WEBAPP_URL
+
+    proto = headers.get("X-Forwarded-Proto") or headers.get("x-forwarded-proto") or "https"
+    host = headers.get("Host") or headers.get("host") or "127.0.0.1:8000"
+    return f"{proto}://{host}".rstrip("/")
+
+
+def telegram_user_to_player(user):
+    return parse_telegram_user(user or {})
+
+
+def player_stats_text(stats):
+    player = stats.get("player") or {}
+    name = html.escape(player.get("name") or "Игрок")
+    best = player.get("best_score", 0)
+    games = player.get("games_played", 0)
+    hits = player.get("total_hits", 0)
+    shots = player.get("total_shots", 0)
+    jumps = player.get("total_jumps", 0)
+    rank = player.get("rank") or "-"
+
+    return (
+        f"<b>Статистика {name}</b>\n"
+        f"🏆 Лучший счёт: <b>{best}</b>\n"
+        f"🎮 Игр сыграно: <b>{games}</b>\n"
+        f"🎯 Попаданий: <b>{hits}</b>\n"
+        f"🔫 Выстрелов: <b>{shots}</b>\n"
+        f"🦘 Прыжков: <b>{jumps}</b>\n"
+        f"📊 Место: <b>#{rank}</b>"
+    )
+
+
+def leaderboard_text(stats):
+    rows = stats.get("leaderboard") or []
+
+    if not rows:
+        return "<b>Топ игроков</b>\nПока нет результатов. Напиши /play и сыграй первый раунд."
+
+    lines = ["<b>Топ игроков</b>"]
+
+    for row in rows[:10]:
+        rank = row.get("rank") or "-"
+        name = html.escape(row.get("name") or row.get("username") or "Игрок")
+        score = row.get("best_score", 0)
+        games = row.get("games_played", 0)
+        lines.append(f"{rank}. {name} — <b>{score}</b> ({games} игр)")
+
+    return "\n".join(lines)
+
+
+def play_reply_markup(webapp_url):
+    return {
+        "inline_keyboard": [
+            [{"text": "🎮 Играть", "web_app": {"url": webapp_url}}],
+            [{"text": "Открыть ссылкой", "url": webapp_url}],
+        ]
+    }
+
+
+def send_telegram_message(chat_id, text, reply_markup=None):
+    payload = {
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }
+
+    if reply_markup:
+        payload["reply_markup"] = reply_markup
+
+    return telegram_api("sendMessage", payload)
+
+
+def command_from_message(message):
+    text = (message.get("text") or "").strip()
+    if not text.startswith("/"):
+        return ""
+
+    command = text.split()[0].lower()
+    return command.split("@", 1)[0]
+
+
+def handle_telegram_update(update, headers):
+    message = update.get("message") or update.get("edited_message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+
+    if not chat_id:
+        return {"ok": True, "ignored": True}
+
+    command = command_from_message(message)
+    user = message.get("from") or {}
+    player = telegram_user_to_player(user)
+    webapp_url = get_request_base_url(headers)
+
+    if command in ("/start", "/help"):
+        send_telegram_message(
+            chat_id,
+            "Команды игры:\n/play — открыть игру\n/stats — моя статистика\n/top — топ игроков",
+            play_reply_markup(webapp_url),
+        )
+        return {"ok": True}
+
+    if command == "/play":
+        send_telegram_message(
+            chat_id,
+            "Нажми кнопку, чтобы открыть игру:",
+            play_reply_markup(webapp_url),
+        )
+        return {"ok": True}
+
+    if command == "/stats":
+        stats = stats_payload_for_player(player)
+        send_telegram_message(chat_id, player_stats_text(stats), play_reply_markup(webapp_url))
+        return {"ok": True}
+
+    if command == "/top":
+        stats = stats_payload_for_player(player)
+        send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url))
+        return {"ok": True}
+
+    return {"ok": True, "ignored": True}
 
 def is_blocked_static_path(path):
     return path in BLOCKED_STATIC_PATHS or path.startswith("/__pycache__/") or path.endswith(".pyc")
@@ -538,14 +684,15 @@ class GameHandler(SimpleHTTPRequestHandler):
         if parsed.path == "/api/score":
             return self.handle_score()
 
+        if parsed.path == "/telegram/webhook":
+            return self.handle_telegram_webhook()
+
         self.send_error(HTTPStatus.NOT_FOUND)
 
     def handle_stats(self):
         try:
             player = player_from_request(self)
-            with sqlite3.connect(DB_PATH) as db:
-                upsert_player(db, player)
-                result = stats_for_player(db, player["user_id"])
+            result = stats_payload_for_player(player)
             self.send_json(result)
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.UNAUTHORIZED)
@@ -558,6 +705,15 @@ class GameHandler(SimpleHTTPRequestHandler):
             self.send_json(result)
         except Exception as exc:
             self.send_json({"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    def handle_telegram_webhook(self):
+        try:
+            update = self.read_json_body()
+            result = handle_telegram_update(update, self.headers)
+            self.send_json(result)
+        except Exception as exc:
+            print(f"Telegram webhook error: {exc}")
+            self.send_json({"ok": False, "error": str(exc)}, HTTPStatus.OK)
 
     def read_json_body(self):
         length = min(int(self.headers.get("Content-Length", "0") or "0"), MAX_BODY_BYTES)
@@ -655,6 +811,15 @@ def application(environ, start_response):
             return wsgi_json(start_response, record_score(player, payload))
         except Exception as exc:
             return wsgi_json(start_response, {"error": str(exc)}, HTTPStatus.BAD_REQUEST)
+
+    if method == "POST" and path == "/telegram/webhook":
+        try:
+            headers = wsgi_headers(environ)
+            update = read_wsgi_json_body(environ)
+            return wsgi_json(start_response, handle_telegram_update(update, headers))
+        except Exception as exc:
+            print(f"Telegram webhook error: {exc}")
+            return wsgi_json(start_response, {"ok": False, "error": str(exc)}, HTTPStatus.OK)
 
     if method == "GET":
         return serve_wsgi_static(path, start_response)

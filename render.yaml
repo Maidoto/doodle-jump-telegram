@@ -12,7 +12,10 @@
         value: "0"
       - key: TELEGRAM_BOT_TOKEN
         sync: false
+      - key: WEBAPP_URL
+        sync: false
       - key: SUPABASE_URL
         sync: false
       - key: SUPABASE_SERVICE_ROLE_KEY
         sync: false
+
