@@ -19,7 +19,11 @@ def main():
         raise SystemExit("Pass your Render URL: python set_webhook.py https://your-app.onrender.com")
 
     webhook_url = f"{app_url}/telegram/webhook"
-    payload = json.dumps({"url": webhook_url, "drop_pending_updates": True, "allowed_updates": ["message", "edited_message"]}).encode("utf-8")
+    payload = json.dumps({
+        "url": webhook_url,
+        "drop_pending_updates": True,
+        "allowed_updates": ["message", "edited_message", "callback_query"],
+    }).encode("utf-8")
     request = Request(
         f"https://api.telegram.org/bot{token}/setWebhook",
         data=payload,

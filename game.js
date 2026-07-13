@@ -88,7 +88,7 @@
     lastPlatform: null,
     lastEnemyY: 0,
     platformsSinceEnemy: 0,
-    nextEnemyScore: 240,
+    nextEnemyScore: 160,
     session: createSessionStats(),
     statsSubmitPending: false,
     player: createPlayer(),
@@ -507,7 +507,7 @@
     state.bullets = [];
     state.particles = [];
     state.platformsSinceEnemy = 0;
-    state.nextEnemyScore = 240;
+    state.nextEnemyScore = 160;
 
     const player = state.player;
     player.w = clamp(view.worldW * 0.138, 50, 68);
@@ -854,17 +854,18 @@
 
   function maybeSpawnEnemy(platform, heightScore) {
     const mobile = usesTouchLayout();
-    if (heightScore < (mobile ? 160 : 80) || platform.type === "fragile") return;
+    if (heightScore < (mobile ? 130 : 80) || platform.type === "fragile") return;
 
     state.platformsSinceEnemy += 1;
 
     if (mobile) {
       const due = heightScore >= state.nextEnemyScore;
-      const randomSpawn = state.platformsSinceEnemy >= 2 && Math.random() < clamp(0.1 + heightScore / 6000, 0.1, 0.22);
-      const minEnemyGap = 175;
+      const forcedByPlatforms = state.platformsSinceEnemy >= 6;
+      const randomSpawn = state.platformsSinceEnemy >= 3 && Math.random() < clamp(0.12 + heightScore / 5000, 0.12, 0.26);
+      const minEnemyGap = due || forcedByPlatforms ? 95 : 135;
 
       if (Math.abs(platform.y - state.lastEnemyY) < minEnemyGap) return;
-      if (!due && !randomSpawn) return;
+      if (!due && !forcedByPlatforms && !randomSpawn) return;
     } else {
       const chance = clamp(0.055 + heightScore / 3600, 0.055, 0.24);
       if (Math.random() > chance) return;
@@ -889,7 +890,7 @@
     state.lastEnemyY = platform.y;
     state.platformsSinceEnemy = 0;
     if (mobile) {
-      state.nextEnemyScore = heightScore + random(260, 430);
+      state.nextEnemyScore = heightScore + random(58, 92);
     }
   }
 

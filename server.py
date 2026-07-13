@@ -536,6 +536,7 @@ def play_reply_markup(webapp_url, chat_type="private"):
         return {
             "inline_keyboard": [
                 [{"text": "🎮 Играть", "url": play_url}],
+                [{"text": "📊 Статистика", "callback_data": "top"}],
                 [{"text": "Открыть сайт", "url": webapp_url}],
             ]
         }
@@ -543,9 +544,18 @@ def play_reply_markup(webapp_url, chat_type="private"):
     return {
         "inline_keyboard": [
             [{"text": "🎮 Играть", "web_app": {"url": webapp_url}}],
+            [{"text": "📊 Статистика", "callback_data": "top"}],
             [{"text": "Открыть ссылкой", "url": webapp_url}],
         ]
     }
+
+
+def answer_telegram_callback(callback_id, text=""):
+    payload = {"callback_query_id": callback_id}
+    if text:
+        payload["text"] = text
+
+    return telegram_api("answerCallbackQuery", payload)
 
 
 def send_telegram_message(chat_id, text, reply_markup=None, message_thread_id=None):
@@ -575,6 +585,10 @@ def command_from_message(message):
 
 
 def handle_telegram_update(update, headers):
+    callback = update.get("callback_query")
+    if callback:
+        return handle_telegram_callback(callback, headers)
+
     message = update.get("message") or update.get("edited_message") or {}
     chat = message.get("chat") or {}
     chat_id = chat.get("id")
@@ -615,6 +629,36 @@ def handle_telegram_update(update, headers):
     if command == "/top":
         stats = stats_payload_for_player(player)
         send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url, chat_type), message_thread_id)
+        return {"ok": True}
+
+    return {"ok": True, "ignored": True}
+
+
+def handle_telegram_callback(callback, headers):
+    callback_id = callback.get("id")
+    data = (callback.get("data") or "").strip()
+    message = callback.get("message") or {}
+    chat = message.get("chat") or {}
+    chat_id = chat.get("id")
+    chat_type = chat.get("type") or "private"
+    player = telegram_user_to_player(callback.get("from") or {})
+    webapp_url = get_request_base_url(headers)
+    message_thread_id = message.get("message_thread_id")
+
+    if callback_id:
+        answer_telegram_callback(callback_id)
+
+    if not chat_id:
+        return {"ok": True, "ignored": True}
+
+    if data == "top":
+        stats = stats_payload_for_player(player)
+        send_telegram_message(chat_id, leaderboard_text(stats), play_reply_markup(webapp_url, chat_type), message_thread_id)
+        return {"ok": True}
+
+    if data == "stats":
+        stats = stats_payload_for_player(player)
+        send_telegram_message(chat_id, player_stats_text(stats), play_reply_markup(webapp_url, chat_type), message_thread_id)
         return {"ok": True}
 
     return {"ok": True, "ignored": True}
@@ -701,6 +745,7 @@ class GameHandler(SimpleHTTPRequestHandler):
         body = file_path.read_bytes()
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", mimetypes.guess_type(str(file_path))[0] or "application/octet-stream")
+        self.send_header("Cache-Control", "no-store, max-age=0")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
